@@ -37,7 +37,7 @@ pub async fn run(base: CommandBase, telemetry: CommandEventBuilder) -> Result<i3
     let run_builder = RunBuilder::new(base)?;
 
     let run_fut = async {
-        let run = run_builder.build(&handler, telemetry).await?;
+        let mut run = run_builder.build(&handler, telemetry).await?;
         run.run().await
     };
 
