@@ -148,9 +148,11 @@ pub struct Args {
     #[clap(long, global = true)]
     /// Skip any attempts to infer which version of Turbo the project is
     /// configured to use
+    #[serde(skip)]
     pub skip_infer: bool,
     /// Disable the turbo update notification
     #[clap(long, global = true)]
+    #[serde(skip)]
     pub no_update_notifier: bool,
     /// Override the endpoint for API calls
     #[clap(long, global = true, value_parser)]
@@ -311,12 +313,12 @@ impl Args {
                 // And then only add them back in when we're in `run`.
                 // The value can appear in two places in the struct.
                 // We defensively attempt to set both.
-                if let Some(RunArgs { execution_args, .. }) = &mut args.run_args {
-                    execution_args.single_package = is_single_package
+                if let Some(ref mut run_args) = args.run_args {
+                    run_args.execution_args.single_package = is_single_package
                 }
 
-                if let Some(Command::Run(box RunArgs { execution_args, .. })) = &mut args.command {
-                    execution_args.single_package = is_single_package;
+                if let Some(Command::Run(ref mut run_args)) = args.command {
+                    run_args.execution_args.single_package = is_single_package;
                 }
 
                 args
@@ -1338,7 +1340,7 @@ mod test {
             output_logs: None,
             remote_only: false,
             framework_inference: true,
-            ..get_default_execution_args()
+            ..ExecutionArgs::default()
         }
     }
 
@@ -1542,7 +1544,8 @@ mod test {
                 ..get_default_run_args()
             }))),
             ..Args::default()
-        }
+        } ;
+        "multiple tasks"
 	)]
     #[test_case::test_case(
 		&["turbo", "run", "build", "--cache-dir", "foobar"],
@@ -1556,7 +1559,8 @@ mod test {
                 ..get_default_run_args()
             }))),
             ..Args::default()
-        }
+        } ;
+        "cache dir"
 	)]
     #[test_case::test_case(
 		&["turbo", "run", "build", "--cache-workers", "100"],
@@ -1570,7 +1574,8 @@ mod test {
                 ..get_default_run_args()
             }))),
             ..Args::default()
-        }
+        } ;
+        "cache workers"
 	)]
     #[test_case::test_case(
 		&["turbo", "run", "build", "--concurrency", "20"],
@@ -1584,7 +1589,8 @@ mod test {
                 ..get_default_run_args()
             }))),
             ..Args::default()
-        }
+        } ;
+        "concurrency"
 	)]
     #[test_case::test_case(
 		&["turbo", "run", "build", "--continue"],
@@ -1598,7 +1604,8 @@ mod test {
                 ..get_default_run_args()
             }))),
             ..Args::default()
-        }
+        } ;
+        "continue flag"
 	)]
     #[test_case::test_case(
 		&["turbo", "run", "build", "--dry-run"],
@@ -1612,7 +1619,8 @@ mod test {
                 ..get_default_run_args()
             }))),
             ..Args::default()
-        }
+        } ;
+        "dry run"
 	)]
     #[test_case::test_case(
 		&["turbo", "run", "build", "--dry-run", "json"],
@@ -1626,7 +1634,8 @@ mod test {
                 ..get_default_run_args()
             }))),
             ..Args::default()
-        }
+        } ;
+        "dry run json"
 	)]
     #[test_case::test_case(
 		&["turbo", "run", "build", "--filter", "water", "--filter", "earth", "--filter", "fire", "--filter", "air"],
@@ -1645,7 +1654,8 @@ mod test {
                 ..get_default_run_args()
             }))),
             ..Args::default()
-        }
+        } ;
+        "multiple filters"
 	)]
     #[test_case::test_case(
 		&["turbo", "run", "build", "-F", "water", "-F", "earth", "-F", "fire", "-F", "air"],
@@ -1664,7 +1674,8 @@ mod test {
                 ..get_default_run_args()
             }))),
             ..Args::default()
-        }
+        } ;
+        "multiple filters short"
 	)]
     #[test_case::test_case(
 		&["turbo", "run", "build", "--filter", "water", "-F", "earth", "--filter", "fire", "-F", "air"],
@@ -1683,7 +1694,8 @@ mod test {
                 ..get_default_run_args()
             }))),
             ..Args::default()
-        }
+        } ;
+        "multiple filters short and long"
 	)]
     #[test_case::test_case(
 		&["turbo", "run", "build", "--force"],
@@ -1697,7 +1709,8 @@ mod test {
                 ..get_default_run_args()
             }))),
             ..Args::default()
-        }
+        } ;
+        "force"
 	)]
     #[test_case::test_case(
 		&["turbo", "run", "build", "--global-deps", ".env"],
@@ -1711,7 +1724,8 @@ mod test {
                 ..get_default_run_args()
             }))),
             ..Args::default()
-        }
+        } ;
+        "global deps"
 	)]
     #[test_case::test_case(
 		&[ "turbo", "run", "build", "--global-deps", ".env", "--global-deps", ".env.development"],
@@ -1725,7 +1739,8 @@ mod test {
                 ..get_default_run_args()
             }))),
             ..Args::default()
-        }
+        } ;
+        "multiple global deps"
 	)]
     #[test_case::test_case(
 		&["turbo", "run", "build", "--graph"],
@@ -1739,7 +1754,8 @@ mod test {
                 ..get_default_run_args()
             }))),
             ..Args::default()
-        }
+        } ;
+        "graph"
 	)]
     #[test_case::test_case(
 		&["turbo", "run", "build", "--graph", "out.html"],
@@ -1753,7 +1769,8 @@ mod test {
                 ..get_default_run_args()
             }))),
             ..Args::default()
-        }
+        } ;
+        "graph with output"
 	)]
     #[test_case::test_case(
 		&["turbo", "run", "build", "--filter", "[main]", "--ignore", "foo.js"],
@@ -1815,7 +1832,8 @@ mod test {
                 ..get_default_run_args()
             }))),
             ..Args::default()
-        }
+        } ;
+        "no cache"
 	)]
     #[test_case::test_case(
 		&["turbo", "run", "build", "--no-daemon"],
@@ -1829,7 +1847,8 @@ mod test {
                 ..get_default_run_args()
             }))),
             ..Args::default()
-        }
+        } ;
+        "no daemon"
 	)]
     #[test_case::test_case(
 		&["turbo", "run", "build", "--daemon"],
@@ -1843,7 +1862,8 @@ mod test {
                 ..get_default_run_args()
             }))),
             ..Args::default()
-        }
+        } ;
+        "daemon"
 	)]
     #[test_case::test_case(
 		&["turbo", "run", "build", "--scope", "test", "--no-deps"],
@@ -1873,7 +1893,8 @@ mod test {
                 ..get_default_run_args()
             }))),
             ..Args::default()
-        }
+        } ;
+        "output logs full"
 	)]
     #[test_case::test_case(
 		&["turbo", "run", "build", "--output-logs", "none"],
@@ -1887,7 +1908,8 @@ mod test {
                 ..get_default_run_args()
             }))),
             ..Args::default()
-        }
+        } ;
+        "output logs none"
 	)]
     #[test_case::test_case(
 		&["turbo", "run", "build", "--output-logs", "hash-only"],
@@ -1901,7 +1923,8 @@ mod test {
                 ..get_default_run_args()
             }))),
             ..Args::default()
-        }
+        } ;
+        "output logs hash only"
 	)]
     #[test_case::test_case(
 		&["turbo", "run", "build", "--log-order", "stream"],
@@ -1915,7 +1938,8 @@ mod test {
                 ..get_default_run_args()
             }))),
             ..Args::default()
-        }
+        } ;
+        "log order stream"
 	)]
     #[test_case::test_case(
 		&["turbo", "run", "build", "--log-order", "grouped"],
@@ -1929,7 +1953,8 @@ mod test {
                 ..get_default_run_args()
             }))),
             ..Args::default()
-        }
+        };
+        "log order grouped"
 	)]
     #[test_case::test_case(
 		&["turbo", "run", "build", "--log-prefix", "auto"],
@@ -1943,7 +1968,8 @@ mod test {
                 ..get_default_run_args()
             }))),
             ..Args::default()
-        }
+        } ;
+        "log prefix auto"
 	)]
     #[test_case::test_case(
 		&["turbo", "run", "build", "--log-prefix", "none"],
@@ -1957,7 +1983,8 @@ mod test {
                 ..get_default_run_args()
             }))),
             ..Args::default()
-        }
+        } ;
+        "log prefix none"
 	)]
     #[test_case::test_case(
 		&["turbo", "run", "build", "--log-prefix", "task"],
@@ -1971,7 +1998,8 @@ mod test {
                 ..get_default_run_args()
             }))),
             ..Args::default()
-        }
+        } ;
+        "log prefix task"
 	)]
     #[test_case::test_case(
 		&["turbo", "run", "build"],
@@ -1985,7 +2013,8 @@ mod test {
                 ..get_default_run_args()
             }))),
             ..Args::default()
-        }
+        } ;
+        "just build"
 	)]
     #[test_case::test_case(
 		&["turbo", "run", "build", "--parallel"],
@@ -1999,7 +2028,8 @@ mod test {
                 ..get_default_run_args()
             }))),
             ..Args::default()
-        }
+        } ;
+        "parallel"
 	)]
     #[test_case::test_case(
 		&["turbo", "run", "build", "--profile", "profile_out"],
@@ -2013,7 +2043,8 @@ mod test {
                 ..get_default_run_args()
             }))),
             ..Args::default()
-        }
+        } ;
+        "profile"
 	)]
     // remote-only flag tests
     #[test_case::test_case(
@@ -2088,7 +2119,8 @@ mod test {
                 ..get_default_run_args()
             }))),
             ..Args::default()
-        }
+        } ;
+        "scope"
 	)]
     #[test_case::test_case(
 		&["turbo", "run", "build", "--scope", "test", "--since", "foo"],
@@ -2106,32 +2138,34 @@ mod test {
         } ;
         "scope and since"
 	)]
-    // #[test_case::test_case(
-    // 	&["turbo", "build"],
-    //     Args {
-    //         run_args: Some(RunArgs {
-    //             execution_args: ExecutionArgs {
-    //                 tasks: vec!["build".to_string()],
-    //                 ..get_default_execution_args()
-    //             },
-    //             ..get_default_run_args()
-    //         }),
-    //         ..Args::default()
-    //     }
-    // )]
-    // #[test_case::test_case(
-    // 	&["turbo", "build", "lint", "test"],
-    //     Args {
-    //         run_args: Some(RunArgs {
-    //             execution_args: ExecutionArgs {
-    //                 tasks: vec!["build".to_string(), "lint".to_string(),
-    // "test".to_string()],                 ..get_default_execution_args()
-    //             },
-    //             ..get_default_run_args()
-    //         }),
-    //         ..Args::default()
-    //     }
-    // )]
+    #[test_case::test_case(
+    	&["turbo", "build"],
+        Args {
+            run_args: Some(RunArgs {
+                execution_args: ExecutionArgs {
+                    tasks: vec!["build".to_string()],
+                    ..get_default_execution_args()
+                },
+                ..get_default_run_args()
+            }),
+            ..Args::default()
+        } ;
+        "build no run prefix"
+    )]
+    #[test_case::test_case(
+    	&["turbo", "build", "lint", "test"],
+        Args {
+            run_args: Some(RunArgs {
+                execution_args: ExecutionArgs {
+                    tasks: vec!["build".to_string(), "lint".to_string(),
+    "test".to_string()],                 ..get_default_execution_args()
+                },
+                ..get_default_run_args()
+            }),
+            ..Args::default()
+        } ;
+        "multiple tasks no run prefix"
+    )]
     fn test_parse_run(args: &[&str], expected: Args) {
         assert_eq!(Args::try_parse_from(args).unwrap(), expected);
     }
