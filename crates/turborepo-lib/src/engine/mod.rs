@@ -45,6 +45,7 @@ pub struct Engine<S = Built> {
     task_lookup: HashMap<TaskId<'static>, petgraph::graph::NodeIndex>,
     task_definitions: HashMap<TaskId<'static>, TaskDefinition>,
     task_locations: HashMap<TaskId<'static>, Spanned<()>>,
+    package_tasks: HashMap<PackageName, HashSet<TaskId<'static>>>,
 }
 
 impl Engine<Building> {
@@ -58,12 +59,18 @@ impl Engine<Building> {
             task_lookup: HashMap::default(),
             task_definitions: HashMap::default(),
             task_locations: HashMap::default(),
+            package_tasks: HashMap::default(),
         }
     }
 
     pub fn get_index(&mut self, task_id: &TaskId<'static>) -> petgraph::graph::NodeIndex {
         self.task_lookup.get(task_id).copied().unwrap_or_else(|| {
             let index = self.task_graph.add_node(TaskNode::Task(task_id.clone()));
+            self.package_tasks
+                .entry(PackageName::from(task_id.package()))
+                .or_default()
+                .insert(task_id.clone());
+
             self.task_lookup.insert(task_id.clone(), index);
             index
         })

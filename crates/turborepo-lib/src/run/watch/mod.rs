@@ -18,6 +18,8 @@ use crate::{
     DaemonConnector, DaemonPaths,
 };
 
+mod walker;
+
 pub struct WatchClient {}
 
 #[derive(Debug, Error, Diagnostic)]
@@ -183,11 +185,7 @@ impl WatchClient {
                 args.command = args.command.map(|c| {
                     if let Command::Watch(execution_args) = c {
                         Command::Run {
-                            run_args: Box::new(RunArgs {
-                                no_cache: true,
-                                daemon: true,
-                                ..Default::default()
-                            }),
+                            run_args: Box::new(RunArgs::default()),
                             execution_args,
                         }
                     } else {
