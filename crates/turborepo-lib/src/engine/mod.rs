@@ -45,7 +45,7 @@ pub struct Engine<S = Built> {
     task_lookup: HashMap<TaskId<'static>, petgraph::graph::NodeIndex>,
     task_definitions: HashMap<TaskId<'static>, TaskDefinition>,
     task_locations: HashMap<TaskId<'static>, Spanned<()>>,
-    package_tasks: HashMap<PackageName, HashSet<TaskId<'static>>>,
+    package_tasks: HashMap<PackageName, HashSet<petgraph::graph::NodeIndex>>,
 }
 
 impl Engine<Building> {
@@ -69,7 +69,7 @@ impl Engine<Building> {
             self.package_tasks
                 .entry(PackageName::from(task_id.package()))
                 .or_default()
-                .insert(task_id.clone());
+                .insert(index);
 
             self.task_lookup.insert(task_id.clone(), index);
             index

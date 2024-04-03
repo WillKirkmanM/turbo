@@ -39,7 +39,7 @@ impl<N: Eq + Hash + Copy + Send + 'static> WatchWalker<N, Start> {
     /// emitted might no longer exist or might miss newly added edges.
     pub fn new<G: IntoNodeIdentifiers<NodeId = N> + IntoNeighborsDirected>(
         graph: G,
-        package_tasks: HashMap<PackageName, HashSet<TaskId<'static>>>,
+        package_tasks: HashMap<PackageName, HashSet<N>>,
         package_changes: mpsc::Receiver<PackageName>,
     ) -> Self {
         let (cancel, cancel_rx) = watch::channel(false);
