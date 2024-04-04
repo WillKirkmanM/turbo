@@ -12,7 +12,7 @@ pub mod task_access;
 pub mod task_id;
 pub mod watch;
 
-use std::{collections::HashSet, io::Write, sync::Arc};
+use std::{collections::HashSet, io::Write, mem, sync::Arc};
 
 pub use cache::{ConfigCache, RunCache, TaskCache};
 use chrono::{DateTime, Local};
@@ -33,7 +33,10 @@ use crate::{
     engine::Engine,
     opts::Opts,
     process::ProcessManager,
-    run::{global_hash::get_global_hash_inputs, summary::RunTracker, task_access::TaskAccess},
+    run::{
+        global_hash::get_global_hash_inputs, summary::RunTracker, task_access::TaskAccess,
+        task_id::TaskId,
+    },
     signal::SignalHandler,
     task_graph::Visitor,
     task_hash::{get_external_deps_hash, PackageInputsHashes},
@@ -62,6 +65,7 @@ pub struct Run {
     engine: Arc<Engine>,
     task_access: TaskAccess,
     analytics_handle: Option<AnalyticsHandle>,
+    should_print_prelude: bool,
 }
 
 impl Run {
@@ -96,6 +100,16 @@ impl Run {
         }
     }
 
+    pub async fn run_for_single_task(&mut self, task_id: TaskId<'static>) -> Result<i32, Error> {
+        let engine = Arc::new(self.engine.create_engine_for_subgraph(&task_id)?);
+        let old_engine = mem::replace(&mut self.engine, engine);
+        let result = self.run().await;
+
+        self.engine = old_engine;
+
+        result
+    }
+
     pub async fn run(&mut self) -> Result<i32, Error> {
         let analytics_handle = self.analytics_handle.take();
         let result = self.run_with_analytics().await;
@@ -110,7 +124,7 @@ impl Run {
     // We split this into a separate function because we need
     // to close the AnalyticsHandle regardless of whether the run succeeds or not
     async fn run_with_analytics(&mut self) -> Result<i32, Error> {
-        if self.opts.run_opts.dry_run.is_none() && self.opts.run_opts.graph.is_none() {
+        if self.should_print_prelude {
             self.print_run_prelude();
         }
 

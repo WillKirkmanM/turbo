@@ -43,7 +43,12 @@ use crate::{
     engine::{Engine, EngineBuilder},
     opts::Opts,
     process::ProcessManager,
-    run::{scope, task_access::TaskAccess, task_id::TaskName, Error, Run, RunCache},
+    run::{
+        scope,
+        task_access::TaskAccess,
+        task_id::{TaskId, TaskName},
+        Error, Run, RunCache,
+    },
     shim::TurboState,
     signal::{SignalHandler, SignalSubscriber},
     task_hash::PackageInputsHashes,
@@ -60,6 +65,10 @@ pub struct RunBuilder {
     version: &'static str,
     experimental_ui: bool,
     api_client: APIClient,
+    // We can have an initial task that we can center the Engine around.
+    // This will filter out the tasks that are not reachable from the initial task.
+    initial_task: Option<TaskId<'static>>,
+    should_print_prelude_override: Option<bool>,
 }
 
 impl RunBuilder {
@@ -99,6 +108,7 @@ impl RunBuilder {
             (!cfg!(windows) || experimental_ui),
         );
         let CommandBase { repo_root, ui, .. } = base;
+
         Ok(Self {
             processes,
             opts,
@@ -108,7 +118,19 @@ impl RunBuilder {
             ui,
             version,
             experimental_ui,
+            initial_task: None,
+            should_print_prelude_override: None,
         })
+    }
+
+    pub fn with_initial_task(mut self, initial_task: TaskId<'static>) -> Self {
+        self.initial_task = Some(initial_task);
+        self
+    }
+
+    pub fn hide_prelude(mut self) -> Self {
+        self.should_print_prelude_override = Some(false);
+        self
     }
 
     fn connect_process_manager(&self, signal_subscriber: SignalSubscriber) {
@@ -383,6 +405,10 @@ impl RunBuilder {
             self.opts.run_opts.env_mode = EnvMode::Strict;
         }
 
+        let should_print_prelude = self.should_print_prelude_override.unwrap_or_else(|| {
+            self.opts.run_opts.dry_run.is_none() && self.opts.run_opts.graph.is_none()
+        });
+
         Ok(Run {
             version: self.version,
             ui: self.ui,
@@ -405,6 +431,7 @@ impl RunBuilder {
             engine: Arc::new(engine),
             run_cache,
             signal_handler: signal_handler.clone(),
+            should_print_prelude,
         })
     }
 
@@ -414,7 +441,7 @@ impl RunBuilder {
         root_turbo_json: &TurboJson,
         filtered_pkgs: &HashSet<PackageName>,
     ) -> Result<Engine, Error> {
-        let engine = EngineBuilder::new(
+        let mut engine = EngineBuilder::new(
             &self.repo_root,
             pkg_dep_graph,
             self.opts.run_opts.single_package,
@@ -432,6 +459,12 @@ impl RunBuilder {
             Spanned::new(TaskName::from(task.as_str()).into_owned())
         }))
         .build()?;
+
+        // If we have an initial task, we prune out the engine to only
+        // tasks that are reachable from that initial task.
+        if let Some(initial_task) = &self.initial_task {
+            engine = engine.create_engine_for_subgraph(initial_task)?;
+        }
 
         if !self.opts.run_opts.parallel {
             engine

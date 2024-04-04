@@ -13,12 +13,12 @@ use crate::{
     commands::CommandBase,
     daemon::{proto, DaemonConnectorError, DaemonError},
     get_version, opts, run,
-    run::{builder::RunBuilder, scope::target_selector::InvalidSelectorError, Run},
+    run::{
+        builder::RunBuilder, scope::target_selector::InvalidSelectorError, task_id::TaskId, Run,
+    },
     signal::SignalHandler,
     DaemonConnector, DaemonPaths,
 };
-
-mod walker;
 
 pub struct WatchClient {}
 
@@ -81,6 +81,8 @@ impl WatchClient {
             .build(&handler, telemetry.clone())
             .await?;
 
+        run.print_run_prelude();
+
         let connector = DaemonConnector {
             can_start_server: true,
             can_kill_server: true,
@@ -102,6 +104,7 @@ impl WatchClient {
                     &base,
                     &telemetry,
                     &handler,
+                    &execution_args.tasks,
                 )
                 .await?;
             }
@@ -129,13 +132,14 @@ impl WatchClient {
         base: &CommandBase,
         telemetry: &CommandEventBuilder,
         handler: &SignalHandler,
+        tasks: &[String],
     ) -> Result<(), Error> {
         // Should we recover here?
         match event {
             proto::package_change_event::Event::PackageChanged(proto::PackageChanged {
-                package_name,
+                package_name: package_name_str,
             }) => {
-                let package_name = PackageName::from(package_name);
+                let package_name = PackageName::from(package_name_str.clone());
                 // If not in the filtered pkgs, ignore
                 if !run.filtered_pkgs.contains(&package_name) {
                     return Ok(());
@@ -145,10 +149,7 @@ impl WatchClient {
                 args.command = args.command.map(|c| {
                     if let Command::Watch(execution_args) = c {
                         Command::Run {
-                            execution_args: Box::new(ExecutionArgs {
-                                filter: vec![format!("...{}", package_name)],
-                                ..*execution_args
-                            }),
+                            execution_args: Box::new(ExecutionArgs { ..*execution_args }),
                             run_args: Box::new(RunArgs {
                                 no_cache: true,
                                 daemon: true,
@@ -168,14 +169,19 @@ impl WatchClient {
                     run.abort();
                 }
 
+                let task_id = TaskId::from_static(package_name_str, tasks[0].clone());
+                let signal_handler = handler.clone();
                 let telemetry = telemetry.clone();
-                let handler = handler.clone();
+
                 current_runs.insert(
-                    package_name,
+                    package_name.clone(),
                     tokio::spawn(async move {
                         let mut run = RunBuilder::new(new_base)?
-                            .build(&handler, telemetry)
+                            .with_initial_task(task_id)
+                            .hide_prelude()
+                            .build(&signal_handler, telemetry)
                             .await?;
+
                         run.run().await
                     }),
                 );
@@ -202,6 +208,7 @@ impl WatchClient {
 
                 // rebuild run struct
                 *run = RunBuilder::new(base.clone())?
+                    .hide_prelude()
                     .build(handler, telemetry.clone())
                     .await?;
 

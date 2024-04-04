@@ -45,7 +45,6 @@ pub struct Engine<S = Built> {
     task_lookup: HashMap<TaskId<'static>, petgraph::graph::NodeIndex>,
     task_definitions: HashMap<TaskId<'static>, TaskDefinition>,
     task_locations: HashMap<TaskId<'static>, Spanned<()>>,
-    package_tasks: HashMap<PackageName, HashSet<petgraph::graph::NodeIndex>>,
 }
 
 impl Engine<Building> {
@@ -59,17 +58,12 @@ impl Engine<Building> {
             task_lookup: HashMap::default(),
             task_definitions: HashMap::default(),
             task_locations: HashMap::default(),
-            package_tasks: HashMap::default(),
         }
     }
 
     pub fn get_index(&mut self, task_id: &TaskId<'static>) -> petgraph::graph::NodeIndex {
         self.task_lookup.get(task_id).copied().unwrap_or_else(|| {
             let index = self.task_graph.add_node(TaskNode::Task(task_id.clone()));
-            self.package_tasks
-                .entry(PackageName::from(task_id.package()))
-                .or_default()
-                .insert(index);
 
             self.task_lookup.insert(task_id.clone(), index);
             index
@@ -130,6 +124,31 @@ impl Default for Engine<Building> {
 }
 
 impl Engine<Built> {
+    /// Creates an instance of `Engine` that is centered around a given task.
+    pub fn create_engine_for_subgraph(
+        &self,
+        task_id: &TaskId,
+    ) -> Result<Engine<Built>, BuilderError> {
+        let idx = self.task_lookup.get(task_id).unwrap();
+        let mut reversed_graph = self.task_graph.clone();
+        reversed_graph.reverse();
+        let node_distances = petgraph::algo::dijkstra(&reversed_graph, *idx, None, |_| 1);
+
+        let new_graph = self.task_graph.filter_map(
+            |node_idx, node| node_distances.get(&node_idx).map(|_| node.clone()),
+            |_, e| Some(*e),
+        );
+
+        Ok(Engine {
+            marker: std::marker::PhantomData,
+            root_index: *idx,
+            task_graph: new_graph,
+            task_lookup: self.task_lookup.clone(),
+            task_definitions: self.task_definitions.clone(),
+            task_locations: self.task_locations.clone(),
+        })
+    }
+
     pub fn dependencies(&self, task_id: &TaskId) -> Option<HashSet<&TaskNode>> {
         self.neighbors(task_id, petgraph::Direction::Outgoing)
     }
