@@ -65,9 +65,9 @@ pub struct RunBuilder {
     version: &'static str,
     experimental_ui: bool,
     api_client: APIClient,
-    // We can have an initial task that we can center the Engine around.
-    // This will filter out the tasks that are not reachable from the initial task.
-    initial_task: Option<TaskId<'static>>,
+    // We can have some entrypoint tasks from a watch event.
+    // This will filter out the tasks that are not reachable from the entrypoint tasks.
+    entrypoint_tasks: Option<Vec<TaskId<'static>>>,
     should_print_prelude_override: Option<bool>,
 }
 
@@ -118,13 +118,13 @@ impl RunBuilder {
             ui,
             version,
             experimental_ui,
-            initial_task: None,
+            entrypoint_tasks: None,
             should_print_prelude_override: None,
         })
     }
 
-    pub fn with_initial_task(mut self, initial_task: TaskId<'static>) -> Self {
-        self.initial_task = Some(initial_task);
+    pub fn with_entrypoint_tasks(mut self, entrypoint_tasks: Vec<TaskId<'static>>) -> Self {
+        self.entrypoint_tasks = Some(entrypoint_tasks);
         self
     }
 
@@ -462,8 +462,8 @@ impl RunBuilder {
 
         // If we have an initial task, we prune out the engine to only
         // tasks that are reachable from that initial task.
-        if let Some(initial_task) = &self.initial_task {
-            engine = engine.create_engine_for_subgraph(initial_task)?;
+        if let Some(entrypoint_tasks) = &self.entrypoint_tasks {
+            engine = engine.create_engine_for_subgraph(entrypoint_tasks)?;
         }
 
         if !self.opts.run_opts.parallel {

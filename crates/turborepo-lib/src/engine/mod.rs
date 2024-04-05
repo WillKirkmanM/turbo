@@ -124,24 +124,45 @@ impl Default for Engine<Building> {
 }
 
 impl Engine<Built> {
-    /// Creates an instance of `Engine` that is centered around a given task.
+    /// Creates an instance of `Engine` that only contains tasks that depend on
+    /// the given entrypoint tasks. This is useful for watch mode, where we
+    /// need to re-run only a portion of the task graph.
     pub fn create_engine_for_subgraph(
         &self,
-        task_id: &TaskId,
+        entrypoint_tasks: &[TaskId],
     ) -> Result<Engine<Built>, BuilderError> {
-        let idx = self.task_lookup.get(task_id).unwrap();
+        let entrypoint_indices: Vec<_> = entrypoint_tasks
+            .iter()
+            .map(|task_id| self.task_lookup.get(task_id).unwrap())
+            .collect();
+
+        // We reverse the graph because we want the *dependents* of entrypoint tasks
         let mut reversed_graph = self.task_graph.clone();
         reversed_graph.reverse();
-        let node_distances = petgraph::algo::dijkstra(&reversed_graph, *idx, None, |_| 1);
+
+        // This is `O(V^3)`, so in theory a bottleneck. Running dijkstra's
+        // algorithm for each entrypoint task could potentially be faster.
+        let node_distances = petgraph::algo::floyd_warshall::floyd_warshall(&reversed_graph, |_| 1)
+            .expect("no negative cycles");
 
         let new_graph = self.task_graph.filter_map(
-            |node_idx, node| node_distances.get(&node_idx).map(|_| node.clone()),
+            |node_idx, node| {
+                // If the node is reachable from any of the entrypoint tasks, we include it
+                entrypoint_indices
+                    .iter()
+                    .any(|idx| {
+                        node_distances
+                            .get(&(**idx, node_idx))
+                            .map_or(false, |dist| *dist != i32::MAX)
+                    })
+                    .then_some(node.clone())
+            },
             |_, e| Some(*e),
         );
 
         Ok(Engine {
             marker: std::marker::PhantomData,
-            root_index: *idx,
+            root_index: self.root_index,
             task_graph: new_graph,
             task_lookup: self.task_lookup.clone(),
             task_definitions: self.task_definitions.clone(),

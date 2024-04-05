@@ -100,8 +100,11 @@ impl Run {
         }
     }
 
-    pub async fn run_for_single_task(&mut self, task_id: TaskId<'static>) -> Result<i32, Error> {
-        let engine = Arc::new(self.engine.create_engine_for_subgraph(&task_id)?);
+    pub async fn run_for_task_subset(
+        &mut self,
+        entrypoint_tasks: &[TaskId<'static>],
+    ) -> Result<i32, Error> {
+        let engine = Arc::new(self.engine.create_engine_for_subgraph(entrypoint_tasks)?);
         let old_engine = mem::replace(&mut self.engine, engine);
         let result = self.run().await;
 

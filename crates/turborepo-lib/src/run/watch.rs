@@ -169,7 +169,11 @@ impl WatchClient {
                     run.abort();
                 }
 
-                let task_id = TaskId::from_static(package_name_str, tasks[0].clone());
+                let entrypoint_tasks = tasks
+                    .iter()
+                    .cloned()
+                    .map(|task| TaskId::from_static(package_name_str.clone(), task))
+                    .collect();
                 let signal_handler = handler.clone();
                 let telemetry = telemetry.clone();
 
@@ -177,7 +181,7 @@ impl WatchClient {
                     package_name.clone(),
                     tokio::spawn(async move {
                         let mut run = RunBuilder::new(new_base)?
-                            .with_initial_task(task_id)
+                            .with_entrypoint_tasks(entrypoint_tasks)
                             .hide_prelude()
                             .build(&signal_handler, telemetry)
                             .await?;
