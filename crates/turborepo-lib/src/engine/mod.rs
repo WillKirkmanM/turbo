@@ -64,7 +64,6 @@ impl Engine<Building> {
     pub fn get_index(&mut self, task_id: &TaskId<'static>) -> petgraph::graph::NodeIndex {
         self.task_lookup.get(task_id).copied().unwrap_or_else(|| {
             let index = self.task_graph.add_node(TaskNode::Task(task_id.clone()));
-
             self.task_lookup.insert(task_id.clone(), index);
             index
         })
