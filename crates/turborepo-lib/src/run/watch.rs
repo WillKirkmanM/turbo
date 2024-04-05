@@ -195,7 +195,11 @@ impl WatchClient {
                 args.command = args.command.map(|c| {
                     if let Command::Watch(execution_args) = c {
                         Command::Run {
-                            run_args: Box::new(RunArgs::default()),
+                            run_args: Box::new(RunArgs {
+                                no_cache: true,
+                                daemon: true,
+                                ..Default::default()
+                            }),
                             execution_args,
                         }
                     } else {
