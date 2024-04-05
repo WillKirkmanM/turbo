@@ -462,7 +462,6 @@ impl<'a> EngineBuilder<'a> {
                 .ok_or_else(|| Error::MissingPackageJson {
                     workspace: workspace.clone(),
                 })?;
-
         Ok(TurboJson::load(
             self.repo_root,
             workspace_dir,
