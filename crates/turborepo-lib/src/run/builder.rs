@@ -43,12 +43,7 @@ use crate::{
     engine::{Engine, EngineBuilder},
     opts::Opts,
     process::ProcessManager,
-    run::{
-        scope,
-        task_access::TaskAccess,
-        task_id::{TaskId, TaskName},
-        Error, Run, RunCache,
-    },
+    run::{scope, task_access::TaskAccess, task_id::TaskName, Error, Run, RunCache},
     shim::TurboState,
     signal::{SignalHandler, SignalSubscriber},
     task_hash::PackageInputsHashes,
@@ -65,9 +60,10 @@ pub struct RunBuilder {
     version: &'static str,
     experimental_ui: bool,
     api_client: APIClient,
-    // We can have some entrypoint tasks from a watch event.
-    // This will filter out the tasks that are not reachable from the entrypoint tasks.
-    entrypoint_tasks: Option<Vec<TaskId<'static>>>,
+    // In watch mode, we can have a changed package that we want to serve as an entrypoint.
+    // We will then prune away any tasks that do not depend on tasks inside
+    // this package.
+    entrypoint_package: Option<PackageName>,
     should_print_prelude_override: Option<bool>,
 }
 
@@ -118,13 +114,13 @@ impl RunBuilder {
             ui,
             version,
             experimental_ui,
-            entrypoint_tasks: None,
+            entrypoint_package: None,
             should_print_prelude_override: None,
         })
     }
 
-    pub fn with_entrypoint_tasks(mut self, entrypoint_tasks: Vec<TaskId<'static>>) -> Self {
-        self.entrypoint_tasks = Some(entrypoint_tasks);
+    pub fn with_entrypoint_package(mut self, entrypoint_package: PackageName) -> Self {
+        self.entrypoint_package = Some(entrypoint_package);
         self
     }
 
@@ -462,8 +458,8 @@ impl RunBuilder {
 
         // If we have an initial task, we prune out the engine to only
         // tasks that are reachable from that initial task.
-        if let Some(entrypoint_tasks) = &self.entrypoint_tasks {
-            engine = engine.create_engine_for_subgraph(entrypoint_tasks)?;
+        if let Some(entrypoint_package) = &self.entrypoint_package {
+            engine = engine.create_engine_for_subgraph(entrypoint_package)?;
         }
 
         if !self.opts.run_opts.parallel {

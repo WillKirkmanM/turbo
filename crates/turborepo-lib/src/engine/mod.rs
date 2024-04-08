@@ -45,6 +45,7 @@ pub struct Engine<S = Built> {
     task_lookup: HashMap<TaskId<'static>, petgraph::graph::NodeIndex>,
     task_definitions: HashMap<TaskId<'static>, TaskDefinition>,
     task_locations: HashMap<TaskId<'static>, Spanned<()>>,
+    package_tasks: HashMap<PackageName, Vec<petgraph::graph::NodeIndex>>,
 }
 
 impl Engine<Building> {
@@ -58,6 +59,7 @@ impl Engine<Building> {
             task_lookup: HashMap::default(),
             task_definitions: HashMap::default(),
             task_locations: HashMap::default(),
+            package_tasks: HashMap::default(),
         }
     }
 
@@ -65,6 +67,11 @@ impl Engine<Building> {
         self.task_lookup.get(task_id).copied().unwrap_or_else(|| {
             let index = self.task_graph.add_node(TaskNode::Task(task_id.clone()));
             self.task_lookup.insert(task_id.clone(), index);
+            self.package_tasks
+                .entry(PackageName::from(task_id.package()))
+                .or_default()
+                .push(index);
+
             index
         })
     }
@@ -103,6 +110,7 @@ impl Engine<Building> {
             root_index,
             task_definitions,
             task_locations,
+            package_tasks,
             ..
         } = self;
         Engine {
@@ -112,6 +120,7 @@ impl Engine<Building> {
             root_index,
             task_definitions,
             task_locations,
+            package_tasks,
         }
     }
 }
@@ -124,16 +133,16 @@ impl Default for Engine<Building> {
 
 impl Engine<Built> {
     /// Creates an instance of `Engine` that only contains tasks that depend on
-    /// the given entrypoint tasks. This is useful for watch mode, where we
+    /// tasks from a given package. This is useful for watch mode, where we
     /// need to re-run only a portion of the task graph.
     pub fn create_engine_for_subgraph(
         &self,
-        entrypoint_tasks: &[TaskId],
+        changed_package: &PackageName,
     ) -> Result<Engine<Built>, BuilderError> {
-        let entrypoint_indices: Vec<_> = entrypoint_tasks
-            .iter()
-            .map(|task_id| self.task_lookup.get(task_id).unwrap())
-            .collect();
+        let entrypoint_indices: &[petgraph::graph::NodeIndex] = self
+            .package_tasks
+            .get(changed_package)
+            .map_or(&[], |v| &v[..]);
 
         // We reverse the graph because we want the *dependents* of entrypoint tasks
         let mut reversed_graph = self.task_graph.clone();
@@ -151,12 +160,12 @@ impl Engine<Built> {
                     .iter()
                     .any(|idx| {
                         node_distances
-                            .get(&(**idx, node_idx))
+                            .get(&(*idx, node_idx))
                             .map_or(false, |dist| *dist != i32::MAX)
                     })
                     .then_some(node.clone())
             },
-            |_, e| Some(*e),
+            |_, _| Some(()),
         );
 
         Ok(Engine {
@@ -166,6 +175,7 @@ impl Engine<Built> {
             task_lookup: self.task_lookup.clone(),
             task_definitions: self.task_definitions.clone(),
             task_locations: self.task_locations.clone(),
+            package_tasks: self.package_tasks.clone(),
         })
     }
 

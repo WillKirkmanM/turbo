@@ -13,9 +13,7 @@ use crate::{
     commands::CommandBase,
     daemon::{proto, DaemonConnectorError, DaemonError},
     get_version, opts, run,
-    run::{
-        builder::RunBuilder, scope::target_selector::InvalidSelectorError, task_id::TaskId, Run,
-    },
+    run::{builder::RunBuilder, scope::target_selector::InvalidSelectorError, Run},
     signal::SignalHandler,
     DaemonConnector, DaemonPaths,
 };
@@ -70,7 +68,7 @@ impl WatchClient {
 
         let mut new_base = base.clone();
         new_base.args_mut().command = Some(Command::Run {
-            run_args: Box::new(RunArgs::default()),
+            run_args: Box::default(),
             execution_args: execution_args.clone(),
         });
 
@@ -104,7 +102,6 @@ impl WatchClient {
                     &base,
                     &telemetry,
                     &handler,
-                    &execution_args.tasks,
                 )
                 .await?;
             }
@@ -132,14 +129,13 @@ impl WatchClient {
         base: &CommandBase,
         telemetry: &CommandEventBuilder,
         handler: &SignalHandler,
-        tasks: &[String],
     ) -> Result<(), Error> {
         // Should we recover here?
         match event {
             proto::package_change_event::Event::PackageChanged(proto::PackageChanged {
-                package_name: package_name_str,
+                package_name,
             }) => {
-                let package_name = PackageName::from(package_name_str.clone());
+                let package_name = PackageName::from(package_name);
                 // If not in the filtered pkgs, ignore
                 if !run.filtered_pkgs.contains(&package_name) {
                     return Ok(());
@@ -169,11 +165,6 @@ impl WatchClient {
                     run.abort();
                 }
 
-                let entrypoint_tasks = tasks
-                    .iter()
-                    .cloned()
-                    .map(|task| TaskId::from_static(package_name_str.clone(), task))
-                    .collect();
                 let signal_handler = handler.clone();
                 let telemetry = telemetry.clone();
 
@@ -181,7 +172,7 @@ impl WatchClient {
                     package_name.clone(),
                     tokio::spawn(async move {
                         let mut run = RunBuilder::new(new_base)?
-                            .with_entrypoint_tasks(entrypoint_tasks)
+                            .with_entrypoint_package(package_name)
                             .hide_prelude()
                             .build(&signal_handler, telemetry)
                             .await?;
