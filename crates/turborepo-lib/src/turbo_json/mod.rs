@@ -98,6 +98,7 @@ impl From<&RawRemoteCacheOptions> for ConfigurationOptions {
 #[serde(rename_all = "camelCase")]
 // The raw deserialized turbo.json file.
 pub struct RawTurboJson {
+    #[serde(skip)]
     span: Spanned<()>,
 
     #[serde(rename = "$schema", skip_serializing_if = "Option::is_none")]
@@ -128,6 +129,7 @@ pub struct RawTurboJson {
     pub experimental_ui: Option<bool>,
 
     #[deserializable(rename = "//")]
+    #[serde(skip)]
     _comment: Option<String>,
 }
 
