@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use futures::StreamExt;
 use miette::{Diagnostic, SourceSpan};
@@ -13,7 +13,7 @@ use crate::{
     commands::CommandBase,
     daemon::{proto, DaemonConnectorError, DaemonError},
     get_version, opts, run,
-    run::{builder::RunBuilder, scope::target_selector::InvalidSelectorError, Run},
+    run::{builder::RunBuilder, scope::target_selector::InvalidSelectorError},
     signal::SignalHandler,
     DaemonConnector, DaemonPaths,
 };
@@ -72,14 +72,19 @@ impl WatchClient {
             execution_args: execution_args.clone(),
         });
 
+        let mut main_run_handle: Option<JoinHandle<_>> = None;
+
         // We currently don't actually need the whole Run struct, just the filtered
         // packages. But in the future we'll likely need it to more efficiently
         // spawn tasks.
-        let mut run = RunBuilder::new(new_base)?
+        let run = RunBuilder::new(new_base)?
             .build(&handler, telemetry.clone())
             .await?;
 
         run.print_run_prelude();
+
+        let has_persistent_tasks = run.has_persistent_tasks();
+        let mut filtered_pkgs = run.filtered_pkgs;
 
         let connector = DaemonConnector {
             can_start_server: true,
@@ -92,16 +97,19 @@ impl WatchClient {
         let mut events = client.package_changes().await?;
         let mut current_runs: HashMap<PackageName, JoinHandle<Result<i32, run::Error>>> =
             HashMap::new();
+
         let event_fut = async {
             while let Some(event) = events.next().await {
                 let event = event.unwrap();
                 Self::handle_change_event(
-                    &mut run,
+                    &mut filtered_pkgs,
                     event.event.unwrap(),
                     &mut current_runs,
                     &base,
                     &telemetry,
                     &handler,
+                    &mut main_run_handle,
+                    has_persistent_tasks,
                 )
                 .await?;
             }
@@ -122,13 +130,16 @@ impl WatchClient {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn handle_change_event(
-        run: &mut Run,
+        filtered_pkgs: &mut HashSet<PackageName>,
         event: proto::package_change_event::Event,
         current_runs: &mut HashMap<PackageName, JoinHandle<Result<i32, run::Error>>>,
         base: &CommandBase,
         telemetry: &CommandEventBuilder,
         handler: &SignalHandler,
+        main_run_handle: &mut Option<JoinHandle<Result<i32, run::error::Error>>>,
+        has_persistent_tasks: bool,
     ) -> Result<(), Error> {
         // Should we recover here?
         match event {
@@ -137,7 +148,7 @@ impl WatchClient {
             }) => {
                 let package_name = PackageName::from(package_name);
                 // If not in the filtered pkgs, ignore
-                if !run.filtered_pkgs.contains(&package_name) {
+                if !filtered_pkgs.contains(&package_name) {
                     return Ok(());
                 }
 
@@ -198,21 +209,33 @@ impl WatchClient {
                     }
                 });
 
-                let base = CommandBase::new(args, base.repo_root.clone(), get_version(), base.ui);
-
                 // When we rediscover, stop all current runs
                 for (_, run) in current_runs.drain() {
                     run.abort();
                 }
 
-                // rebuild run struct
-                *run = RunBuilder::new(base.clone())?
-                    .hide_prelude()
-                    .build(handler, telemetry.clone())
-                    .await?;
+                let repo_root = base.repo_root.clone();
+                let ui = base.ui;
+                let telemetry = telemetry.clone();
+                let handler = handler.clone();
+                let run_fut = async move {
+                    let base = CommandBase::new(args, repo_root, get_version(), ui);
 
-                // Execute run
-                run.run().await?;
+                    let mut run = RunBuilder::new(base)?
+                        .hide_prelude()
+                        .build(&handler, telemetry)
+                        .await?;
+
+                    run.run().await
+                };
+
+                if has_persistent_tasks {
+                    // If we have a persistent task, we re-run as a spawned task
+                    // since persistent tasks can be long-running
+                    *main_run_handle = Some(tokio::spawn(run_fut));
+                } else {
+                    let _ = run_fut.await;
+                }
             }
             proto::package_change_event::Event::Error(proto::PackageChangeError { message }) => {
                 return Err(DaemonError::Unavailable(message).into());

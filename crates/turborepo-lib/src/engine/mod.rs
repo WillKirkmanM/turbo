@@ -46,6 +46,7 @@ pub struct Engine<S = Built> {
     task_definitions: HashMap<TaskId<'static>, TaskDefinition>,
     task_locations: HashMap<TaskId<'static>, Spanned<()>>,
     package_tasks: HashMap<PackageName, Vec<petgraph::graph::NodeIndex>>,
+    pub(crate) has_persistent_tasks: bool,
 }
 
 impl Engine<Building> {
@@ -60,6 +61,7 @@ impl Engine<Building> {
             task_definitions: HashMap::default(),
             task_locations: HashMap::default(),
             package_tasks: HashMap::default(),
+            has_persistent_tasks: false,
         }
     }
 
@@ -86,6 +88,9 @@ impl Engine<Building> {
         task_id: TaskId<'static>,
         definition: TaskDefinition,
     ) -> Option<TaskDefinition> {
+        if definition.persistent {
+            self.has_persistent_tasks = true;
+        }
         self.task_definitions.insert(task_id, definition)
     }
 
@@ -111,6 +116,7 @@ impl Engine<Building> {
             task_definitions,
             task_locations,
             package_tasks,
+            has_persistent_tasks: has_persistent_task,
             ..
         } = self;
         Engine {
@@ -121,6 +127,7 @@ impl Engine<Building> {
             task_definitions,
             task_locations,
             package_tasks,
+            has_persistent_tasks: has_persistent_task,
         }
     }
 }
@@ -139,10 +146,12 @@ impl Engine<Built> {
         &self,
         changed_package: &PackageName,
     ) -> Result<Engine<Built>, BuilderError> {
-        let entrypoint_indices: &[petgraph::graph::NodeIndex] = self
+        let entrypoint_indices: Vec<_> = self
             .package_tasks
             .get(changed_package)
-            .map_or(&[], |v| &v[..]);
+            .into_iter()
+            .flatten()
+            .collect();
 
         // We reverse the graph because we want the *dependents* of entrypoint tasks
         let mut reversed_graph = self.task_graph.clone();
@@ -155,12 +164,27 @@ impl Engine<Built> {
 
         let new_graph = self.task_graph.filter_map(
             |node_idx, node| {
+                let task = &self.task_graph[node_idx];
+                match task {
+                    TaskNode::Root => {}
+                    TaskNode::Task(task) => {
+                        // We only want to include tasks that are not persistent
+                        let def = self
+                            .task_definitions
+                            .get(task)
+                            .expect("task should have definition");
+
+                        if def.persistent {
+                            return None;
+                        }
+                    }
+                }
                 // If the node is reachable from any of the entrypoint tasks, we include it
                 entrypoint_indices
                     .iter()
                     .any(|idx| {
                         node_distances
-                            .get(&(*idx, node_idx))
+                            .get(&(**idx, node_idx))
                             .map_or(false, |dist| *dist != i32::MAX)
                     })
                     .then_some(node.clone())
@@ -176,6 +200,8 @@ impl Engine<Built> {
             task_definitions: self.task_definitions.clone(),
             task_locations: self.task_locations.clone(),
             package_tasks: self.package_tasks.clone(),
+            // We've filtered out persistent tasks
+            has_persistent_tasks: false,
         })
     }
 
