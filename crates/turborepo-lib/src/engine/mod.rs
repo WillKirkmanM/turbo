@@ -168,11 +168,24 @@ impl Engine<Built> {
             |_, _| Some(()),
         );
 
+        let task_lookup: HashMap<_, _> = new_graph
+            .node_indices()
+            .filter_map(|index| {
+                let task = new_graph
+                    .node_weight(index)
+                    .expect("node index should be present");
+                match task {
+                    TaskNode::Root => None,
+                    TaskNode::Task(task) => Some((task.clone(), index)),
+                }
+            })
+            .collect();
+
         Ok(Engine {
             marker: std::marker::PhantomData,
             root_index: self.root_index,
             task_graph: new_graph,
-            task_lookup: self.task_lookup.clone(),
+            task_lookup,
             task_definitions: self.task_definitions.clone(),
             task_locations: self.task_locations.clone(),
             package_tasks: self.package_tasks.clone(),
